@@ -31,6 +31,7 @@ export const ROUTE_PREFIX = '/dsh-attachments/files'
 
 const FILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MEDIA_TYPE = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i
+const WINDOWS_DRIVE_PATH = /^[a-z]:/i
 
 /** @typedef {'file' | 'directory'} AttachmentKind */
 /** @typedef {{ id: string, kind: AttachmentKind, name: string, mediaType: string, size: number, fileCount?: number, objectPath: string, workspacePath?: string }} StoredFile */
@@ -58,7 +59,13 @@ function normalizeKind(value) {
 /** Resolve one browser-supplied member path below a staged directory root. */
 export function directoryMemberPath(root, value) {
   const raw = String(value || '').replaceAll('\\', '/')
-  if (raw === '' || raw.length > 4096 || isAbsolute(raw) || raw.startsWith('/')) {
+  if (
+    raw === ''
+    || raw.length > 4096
+    || isAbsolute(raw)
+    || raw.startsWith('/')
+    || WINDOWS_DRIVE_PATH.test(raw)
+  ) {
     throw new Error('missing or invalid directory member path')
   }
   const segments = raw.split('/')
