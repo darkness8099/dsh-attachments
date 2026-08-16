@@ -30,7 +30,7 @@ test('package declares a standard installable DSH bundle', async () => {
     name === 'react' || name.startsWith('@deepseek-ai/')
   )))
   assert.ok(manifest.files.includes('lib/'))
-  assert.ok(manifest.files.includes('README.zh.md'))
+  assert.ok(manifest.files.includes('README.en.md'))
   assert.match(patch, /id:\s*dsh-attachments/)
   assert.match(patch, /name:\s*dsh-attachments/)
 })
@@ -51,7 +51,7 @@ test('marketplace fixture follows the standalone repository catalog schema', asy
 
 test('installation docs use this repository instead of the unrelated npm package', async () => {
   const installSpec = 'github:WJZ-P/dsh-attachments'
-  for (const readme of ['README.md', 'README.zh.md']) {
+  for (const readme of ['README.md', 'README.en.md']) {
     const body = await readFile(join(packageRoot, readme), 'utf8')
     assert.match(body, new RegExp(`dsh plugin --profile web add ${installSpec}`))
     assert.doesNotMatch(body, /dsh plugin --profile web add dsh-attachments(?:\s|$)/)
@@ -80,7 +80,7 @@ test('marketplace screenshot snippet points at reviewed repository PNG files', a
     assert.ok(image.readUInt32BE(20) >= 250)
   }
 
-  for (const readme of ['README.md', 'README.zh.md']) {
+  for (const readme of ['README.md', 'README.en.md']) {
     const body = await readFile(join(packageRoot, readme), 'utf8')
     for (const name of names) assert.match(body, new RegExp(`assets/screenshots/${name}`))
   }
