@@ -26,6 +26,8 @@ test('directory member paths stay below their logical attachment root', () => {
   assert.throws(() => directoryMemberPath(root, '../outside.txt'), /invalid|escapes/)
   assert.throws(() => directoryMemberPath(root, '/outside.txt'), /invalid|escapes/)
   assert.throws(() => directoryMemberPath(root, 'C:/outside.txt'), /invalid|escapes/)
+  assert.throws(() => directoryMemberPath(root, 'C:outside.txt'), /invalid|escapes/)
+  assert.throws(() => directoryMemberPath(root, '\\\\server\\share\\outside.txt'), /invalid|escapes/)
 })
 
 test('message augmentation removes the file-only marker and persists metadata', () => {
