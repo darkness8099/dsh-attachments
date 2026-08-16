@@ -120,6 +120,13 @@ npm pack --dry-run
 
 当前版本面向 DeepSeek Harness `0.1.0-rc.5` 的标准 bundle、Web Client 发现、输入附件栏、会话事件与 Host 路由接口。
 
+## 🔐 安全与跨平台
+
+- 文件名、MIME 类型、附件 ID 与目录成员路径均按不可信输入校验；
+- Windows 盘符、UNC 路径、绝对路径及目录穿越片段会在写入前被拒绝；
+- GitHub CI 同时覆盖 Linux 与 Windows，避免路径语义差异造成回归；
+- 安全问题报告方式及支持范围见 [`SECURITY.md`](SECURITY.md)。
+
 ## 🛍️ 插件市场
 
 Marketplace 数据模板、截图 URL 和提交前检查项记录在 [`MARKETPLACE.md`](MARKETPLACE.md)，截图源文件位于 [`assets/screenshots/`](assets/screenshots/)。
