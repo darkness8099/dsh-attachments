@@ -107,6 +107,13 @@ npm pack --dry-run
 
 The ready-to-copy catalog YAML and screenshot URL template are maintained in [MARKETPLACE.md](MARKETPLACE.md). Screenshot files belong in [`assets/screenshots/`](assets/screenshots/).
 
+## Security and portability
+
+- Filenames, MIME types, attachment IDs, and directory member paths are treated as untrusted input.
+- Drive-prefixed, UNC, absolute, and traversal paths are rejected before workspace materialization.
+- GitHub CI exercises both Linux and Windows path semantics.
+- See [`SECURITY.md`](SECURITY.md) for supported versions and private-reporting guidance.
+
 ## License
 
 [MIT](LICENSE)
