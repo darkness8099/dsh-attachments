@@ -18,6 +18,9 @@ import {
   basename, dirname, isAbsolute, join, relative, resolve, sep,
 } from 'node:path'
 import { pipeline } from 'node:stream/promises'
+import {
+  applyVisionBridge, decodeBridgeModelId, encodeBridgeModelId,
+} from './vision-bridge.mjs'
 
 export const name = 'dsh-attachments'
 export const inject = ['webServer', 'sessions']
@@ -28,6 +31,7 @@ export const AUTO_DRAFT_MARKER = '\u2063'
 export const ATTACHMENT_SOURCE_FIELD = 'dshAttachments'
 export const ATTACHMENT_PROMPT_FIELD = 'dshAttachmentPrompt'
 export const ROUTE_PREFIX = '/dsh-attachments/files'
+export const VISION_BRIDGE_ROUTE = '/dsh-attachments/vision-bridges'
 
 const FILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MEDIA_TYPE = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i
@@ -129,6 +133,122 @@ function json(res, status, value) {
     'cache-control': 'no-store',
   })
   res.end(body)
+}
+
+function contentContainsImage(content) {
+  if (!Array.isArray(content)) return false
+  return content.some(block => block?.type === 'image'
+    || (block?.type === 'tool-result' && contentContainsImage(block.content)))
+}
+
+/** Report whether DSH's durable session messages contain native image blocks. */
+export function sessionContainsImages(session) {
+  if (typeof session?.deriveMessages === 'function') {
+    return session.deriveMessages().some(message => contentContainsImage(message?.content))
+  }
+  return Array.isArray(session?.events) && session.events.some(event => (
+    event?.type === 'user/message' && contentContainsImage(event.data?.content)
+  ))
+}
+
+/**
+ * Return safe client guidance rows for one session's current main selection.
+ * Unresolvable routes and native image-capable mains need no bridge prompt.
+ */
+export async function visionBridgeCatalog(adapter, selection) {
+  if (selection === undefined) {
+    return { provider: adapter.config.provider, providerName: adapter.config.name, main: null, required: false, visionModels: [] }
+  }
+  const active = selection.provider === adapter.config.provider
+  const activeBinding = active ? adapter.binding(selection.model) : undefined
+  const mainSelection = active ? activeBinding.main : selection
+  const main = await adapter.llm.resolveModelInfo(mainSelection.provider, mainSelection.model)
+  if (main.inputModalities === undefined || main.inputModalities.includes('image')) {
+    return {
+      provider: adapter.config.provider,
+      providerName: adapter.config.name,
+      main: { ...mainSelection, name: main.name },
+      required: false,
+      visionModels: [],
+    }
+  }
+  const availableRoutes = await adapter.visionCandidates()
+  if (activeBinding !== undefined && !availableRoutes.some(route => (
+    route.provider === activeBinding.vision.provider && route.model === activeBinding.vision.model
+  ))) {
+    availableRoutes.push(activeBinding.vision)
+  }
+  const settled = await Promise.allSettled(availableRoutes.map(async (visionRoute) => {
+    const vision = await adapter.llm.resolveModelInfo(visionRoute.provider, visionRoute.model)
+    if (!vision.inputModalities?.includes('image')) return undefined
+    const model = encodeBridgeModelId(mainSelection, visionRoute.id, adapter.config.provider)
+    const visionName = visionRoute.discovered ? vision.name : visionRoute.name
+    return {
+      id: visionRoute.id,
+      name: visionName,
+      model,
+      bridgeName: `${main.name} · Vision via ${visionName}`,
+      description: visionRoute.description
+        ?? `Uses ${visionName} for image evidence while ${main.name} remains the main reasoning model.`,
+      group: visionRoute.discovered ? (visionRoute.providerName ?? visionRoute.provider) : 'Configured',
+      ...main.reasoning === undefined ? {} : { reasoning: main.reasoning },
+    }
+  }))
+  return {
+    provider: adapter.config.provider,
+    providerName: adapter.config.name,
+    main: { ...mainSelection, name: main.name },
+    required: true,
+    active,
+    visionModels: settled.flatMap(result => (
+      result.status === 'fulfilled' && result.value !== undefined ? [result.value] : []
+    )),
+  }
+}
+
+/** Restore the decoded underlying main route after DSH selects a temporary bridge route. */
+export async function restoreBridgeMainDefault(ctx, adapter, model, reasoningEffort) {
+  const binding = adapter.binding(model)
+  const defaults = ctx.get('agentDefaultModel')
+  if (defaults === undefined) {
+    const error = new Error('DSH default model service is unavailable')
+    error.status = 503
+    throw error
+  }
+  if (reasoningEffort !== undefined
+    && (typeof reasoningEffort !== 'string' || reasoningEffort.trim() === '')) {
+    const error = new Error('reasoningEffort must be a non-empty string when provided')
+    error.status = 400
+    throw error
+  }
+  const main = {
+    ...binding.main,
+    ...reasoningEffort === undefined ? {} : { reasoningEffort: reasoningEffort.trim() },
+  }
+  await defaults.saveSelection(main)
+  return main
+}
+
+async function readJsonBody(req, maxBytes = 16 * 1024) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of req) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    size += bytes.byteLength
+    if (size > maxBytes) {
+      const error = new Error('request body is too large')
+      error.status = 413
+      throw error
+    }
+    chunks.push(bytes)
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch (cause) {
+    const error = new Error('request body must be valid JSON', { cause })
+    error.status = 400
+    throw error
+  }
 }
 
 function errorResponse(res, error) {
@@ -260,8 +380,16 @@ function downloadName(name) {
 }
 
 /** Mount file transport and prompt association; dsh.client owns browser discovery. */
-export function apply(ctx) {
+export function apply(ctx, config = {}) {
   const storageRoot = join(dshHome(), 'dsh-attachments', 'v1')
+  let bridge
+  if (config.visionBridge !== undefined && config.visionBridge !== false) {
+    ctx.inject(['llm', 'attachments', 'tools', 'sessions'], (bridgeCtx) => {
+      bridge = applyVisionBridge(bridgeCtx, config.visionBridge, {
+        attemptRoot: join(storageRoot, 'vision-attempts'),
+      })
+    })
+  }
   /** @type {Map<string, StoredFile[]>} */
   const pendingBySession = new Map()
   /** @type {Map<string, { sessionId: string, file: StoredFile }>} */
@@ -459,6 +587,58 @@ export function apply(ctx) {
   ctx.effect(
     () => ctx.webServer.register({ kind: 'prefix', path: ROUTE_PREFIX, handler: route }),
     'dsh-attachments: file route',
+  )
+
+  const bridgeRoute = async (req, res) => {
+    try {
+      if (req.method === 'GET') {
+        const url = new URL(req.url ?? '/', 'http://dsh.local')
+        const provider = url.searchParams.get('provider')
+        const model = url.searchParams.get('model')
+        const reasoningEffort = url.searchParams.get('reasoningEffort')
+        const sessionId = url.searchParams.get('sessionId')
+        const session = sessionId === null ? undefined : ctx.sessions.get(sessionId)
+        if (sessionId !== null && session === undefined) {
+          const error = new Error('unknown or inactive session')
+          error.status = 404
+          throw error
+        }
+        const selection = provider === null || model === null
+          ? undefined
+          : {
+              provider,
+              model,
+              ...reasoningEffort === null ? {} : { reasoningEffort },
+            }
+        const catalog = bridge === undefined
+          ? { provider: null, providerName: null, main: null, required: false, visionModels: [] }
+          : await visionBridgeCatalog(bridge, selection)
+        json(res, 200, {
+          ok: true,
+          ...catalog,
+          sessionHasImages: session === undefined ? false : sessionContainsImages(session),
+        })
+        return
+      }
+      if (req.method === 'POST') {
+        if (bridge === undefined) {
+          json(res, 409, { ok: false, error: 'vision bridge is not configured' })
+          return
+        }
+        const body = await readJsonBody(req)
+        const main = await restoreBridgeMainDefault(ctx, bridge, body?.model, body?.reasoningEffort)
+        json(res, 200, { ok: true, main })
+        return
+      }
+      res.writeHead(405, { allow: 'GET, POST' })
+      res.end()
+    } catch (error) {
+      errorResponse(res, error)
+    }
+  }
+  ctx.effect(
+    () => ctx.webServer.register({ kind: 'exact', path: VISION_BRIDGE_ROUTE, handler: bridgeRoute }),
+    'dsh-attachments: vision bridge directory',
   )
 
   const retireFiles = (files) => Promise.all(

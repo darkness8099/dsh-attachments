@@ -1,5 +1,5 @@
-url: https://github.com/WJZ-P/dsh-attachments
-name: WJZ-P/dsh-attachments
+url: https://github.com/darkness8099/dsh-attachments
+name: darkness8099/dsh-attachments
 category: ui
 description:
   en: Adds file and folder drag-and-drop attachments to the Web UI, with composer cards, persistent history, and workspace-backed paths.

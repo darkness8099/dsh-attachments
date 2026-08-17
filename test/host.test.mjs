@@ -7,7 +7,8 @@ import test from 'node:test'
 
 import {
   AUTO_DRAFT_MARKER, ROUTE_PREFIX, apply, attachmentPrompt,
-  directoryMemberPath, internals, normalizeMediaType, sanitizeFilename,
+  VISION_BRIDGE_ROUTE, directoryMemberPath, internals, normalizeMediaType, sanitizeFilename,
+  restoreBridgeMainDefault, sessionContainsImages, visionBridgeCatalog,
 } from '../src/index.mjs'
 
 test('filename normalization cannot escape attachment storage', () => {
@@ -68,6 +69,153 @@ test('message augmentation removes the file-only marker and persists metadata', 
   assert.match(attachmentPrompt([file]), /1 个附件/)
 })
 
+function registrationContext() {
+  const injections = []
+  return {
+    injections,
+    ctx: {
+      sessions: { get: () => undefined },
+      webServer: { register: () => () => {} },
+      inject(services, callback) {
+        injections.push({ services, callback })
+        return () => {}
+      },
+      effect(factory) {
+        factory()
+      },
+      on() {
+        return () => {}
+      },
+    },
+  }
+}
+
+test('host registers bridge injection only when the vision bridge feature is enabled', () => {
+  const omitted = registrationContext()
+  apply(omitted.ctx)
+  assert.deepEqual(omitted.injections, [])
+
+  const disabled = registrationContext()
+  apply(disabled.ctx, { visionBridge: false })
+  assert.deepEqual(disabled.injections, [])
+
+  const configured = registrationContext()
+  apply(configured.ctx, { visionBridge: {} })
+  assert.deepEqual(
+    configured.injections.map(entry => entry.services),
+    [['llm', 'attachments', 'tools', 'sessions']],
+  )
+})
+
+test('vision guidance derives bridge choices from the current main and omits invalid vision routes', async () => {
+  const adapter = {
+    config: {
+      provider: 'vision-bridge',
+      name: 'Vision Bridge',
+      visionModels: [
+        {
+          id: 'reader', name: 'Reader', provider: 'vision', model: 'reader',
+        },
+        {
+          id: 'broken-reader', name: 'Broken Reader', provider: 'vision', model: 'text-reader',
+        },
+      ],
+    },
+    llm: {
+      resolveModelInfo(provider, model) {
+        return Promise.resolve({
+          name: model === 'text' ? 'Text Main' : model === 'vision' ? 'Native Main' : model,
+          inputModalities: provider === 'vision' && model === 'reader'
+            ? ['text', 'image']
+            : model === 'vision' ? ['text', 'image'] : ['text'],
+        })
+      },
+    },
+    visionCandidates() {
+      return Promise.resolve(this.config.visionModels)
+    },
+  }
+
+  const catalog = await visionBridgeCatalog(adapter, { provider: 'main', model: 'text' })
+  assert.equal(catalog.provider, 'vision-bridge')
+  assert.equal(catalog.providerName, 'Vision Bridge')
+  assert.deepEqual(catalog.main, { provider: 'main', model: 'text', name: 'Text Main' })
+  assert.equal(catalog.required, true)
+  assert.equal(catalog.active, false)
+  assert.equal(catalog.visionModels.length, 1)
+  assert.deepEqual({ ...catalog.visionModels[0], model: '<dynamic>' }, {
+    id: 'reader',
+    name: 'Reader',
+    model: '<dynamic>',
+    bridgeName: 'Text Main · Vision via Reader',
+    description: 'Uses Reader for image evidence while Text Main remains the main reasoning model.',
+    group: 'Configured',
+  })
+
+  assert.deepEqual(await visionBridgeCatalog(adapter, { provider: 'main', model: 'vision' }), {
+    provider: 'vision-bridge',
+    providerName: 'Vision Bridge',
+    main: { provider: 'main', model: 'vision', name: 'Native Main' },
+    required: false,
+    visionModels: [],
+  })
+})
+
+test('temporary bridge selection restores the decoded underlying main as DSH default', async () => {
+  const saved = []
+  const main = { provider: 'main-provider', model: 'reasoner', reasoningEffort: 'high' }
+  const bridge = {
+    binding(model) {
+      assert.equal(model, 'dynamic-bridge-route')
+      return { main, vision: { provider: 'vision-provider', model: 'reader' } }
+    },
+  }
+  const ctx = {
+    get(service) {
+      assert.equal(service, 'agentDefaultModel')
+      return { saveSelection(selection) { saved.push(selection); return Promise.resolve() } }
+    },
+  }
+
+  assert.deepEqual(
+    await restoreBridgeMainDefault(ctx, bridge, 'dynamic-bridge-route'),
+    main,
+  )
+  assert.deepEqual(saved, [main])
+
+  assert.deepEqual(
+    await restoreBridgeMainDefault(ctx, bridge, 'dynamic-bridge-route', 'max'),
+    { ...main, reasoningEffort: 'max' },
+  )
+  assert.deepEqual(saved, [main, { ...main, reasoningEffort: 'max' }])
+
+  await assert.rejects(
+    restoreBridgeMainDefault(ctx, bridge, 'dynamic-bridge-route', ''),
+    error => error.status === 400 && /reasoningEffort/.test(error.message),
+  )
+
+  await assert.rejects(
+    restoreBridgeMainDefault({ get: () => undefined }, bridge, 'dynamic-bridge-route'),
+    error => error.status === 503 && /default model service/.test(error.message),
+  )
+})
+
+test('session image preflight follows native image blocks in durable messages', () => {
+  const image = { type: 'image', attachment: { attachmentId: 'sha256:image' } }
+  assert.equal(sessionContainsImages({
+    deriveMessages: () => [{ content: [{ type: 'text', text: 'plain' }] }],
+  }), false)
+  assert.equal(sessionContainsImages({
+    deriveMessages: () => [{ content: [{
+      type: 'tool-result',
+      content: [image],
+    }] }],
+  }), true)
+  assert.equal(sessionContainsImages({
+    events: [{ type: 'user/message', data: { content: [image] } }],
+  }), true)
+})
+
 function responseCapture() {
   const capture = { status: 0, headers: {}, body: Buffer.alloc(0) }
   class CapturedResponse extends Writable {
@@ -95,7 +243,8 @@ test('host plugin reserves the next prompt, materializes it, and serves durable 
   const workspace = join(root, 'workspace')
   const listeners = new Map()
   const disposers = []
-  let route
+  const injections = []
+  const routes = new Map()
   let currentMessage
   const session = { events: [], header: { cwd: workspace } }
   const emit = (name, payload) => {
@@ -117,7 +266,11 @@ test('host plugin reserves the next prompt, materializes it, and serves durable 
   const ctx = {
     sessions: { get: id => id === 'session-1' ? session : undefined },
     webServer: {
-      register(entry) { route = entry.handler; return () => {} },
+      register(entry) { routes.set(entry.path, entry.handler); return () => {} },
+    },
+    inject(services, callback) {
+      injections.push({ services, callback })
+      return () => {}
     },
     effect(factory) {
       const dispose = factory()
@@ -131,7 +284,25 @@ test('host plugin reserves the next prompt, materializes it, and serves durable 
 
   try {
     apply(ctx)
+    assert.deepEqual(injections, [])
+    const route = routes.get(ROUTE_PREFIX)
+    const bridgeRoute = routes.get(VISION_BRIDGE_ROUTE)
     assert.equal(typeof route, 'function')
+    assert.equal(typeof bridgeRoute, 'function')
+    const bridgeRequest = Readable.from([])
+    bridgeRequest.method = 'GET'
+    bridgeRequest.url = `${VISION_BRIDGE_ROUTE}?sessionId=session-1`
+    const bridgeResponse = responseCapture()
+    await bridgeRoute(bridgeRequest, bridgeResponse.response)
+    assert.deepEqual(JSON.parse(bridgeResponse.capture.body.toString()), {
+      ok: true,
+      provider: null,
+      providerName: null,
+      main: null,
+      required: false,
+      visionModels: [],
+      sessionHasImages: false,
+    })
     const upload = Readable.from([Buffer.from('hello dsh attachment')])
     upload.method = 'POST'
     upload.url = `${ROUTE_PREFIX}?sessionId=session-1&name=notes.txt&mediaType=text%2Fplain`

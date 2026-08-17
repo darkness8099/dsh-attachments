@@ -10,7 +10,7 @@
 
 [English](README.en.md) · **简体中文**
 
-[![CI](https://github.com/WJZ-P/dsh-attachments/actions/workflows/ci.yml/badge.svg)](https://github.com/WJZ-P/dsh-attachments/actions/workflows/ci.yml)
+[![CI](https://github.com/darkness8099/dsh-attachments/actions/workflows/ci.yml/badge.svg)](https://github.com/darkness8099/dsh-attachments/actions/workflows/ci.yml)
 ![DSH Plugin](https://img.shields.io/badge/DeepSeek%20Harness-plugin-111827)
 ![Version](https://img.shields.io/badge/version-1.0.1-2563eb)
 ![License](https://img.shields.io/badge/license-MIT-22c55e)
@@ -63,7 +63,7 @@
 当前版本可直接从独立 GitHub 仓库安装到原生 DSH 的 `web` profile：
 
 ```bash
-dsh plugin --profile web add github:WJZ-P/dsh-attachments
+dsh plugin --profile web add github:darkness8099/dsh-attachments
 ```
 
 > [!IMPORTANT]

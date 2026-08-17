@@ -5,11 +5,11 @@ This file tracks the current `awesome-dsh-plugin` / `dsh-market` submission cont
 ## Catalog data file
 
 The catalog READMEs are generated. Copy the checked-in fixture
-[`marketplace/WJZ-P__dsh-attachments.yml`](marketplace/WJZ-P__dsh-attachments.yml)
+[`marketplace/darkness8099__dsh-attachments.yml`](marketplace/darkness8099__dsh-attachments.yml)
 to this path in an `awesome-dsh-plugin` checkout:
 
 ```text
-data/plugins/WJZ-P__dsh-attachments.yml
+data/plugins/darkness8099__dsh-attachments.yml
 ```
 
 Its category is `ui`, rendered as **UI Enhancements / UI 增强**. The entry URL points directly to the standalone repository, and its display name follows the catalog's `owner/repo` convention.
@@ -30,10 +30,10 @@ The reviewed screenshot snippet is checked in at [`marketplace/screenshots.entry
 
 ```json
 {
-  "https://github.com/WJZ-P/dsh-attachments": [
-    "https://raw.githubusercontent.com/WJZ-P/dsh-attachments/main/assets/markdown/01-drag-drop-overlay.png",
-    "https://raw.githubusercontent.com/WJZ-P/dsh-attachments/main/assets/markdown/02-image-conversation.png",
-    "https://raw.githubusercontent.com/WJZ-P/dsh-attachments/main/assets/markdown/03-multiple-image-preview.png"
+  "https://github.com/darkness8099/dsh-attachments": [
+    "https://raw.githubusercontent.com/darkness8099/dsh-attachments/main/assets/markdown/01-drag-drop-overlay.png",
+    "https://raw.githubusercontent.com/darkness8099/dsh-attachments/main/assets/markdown/02-image-conversation.png",
+    "https://raw.githubusercontent.com/darkness8099/dsh-attachments/main/assets/markdown/03-multiple-image-preview.png"
   ]
 }
 ```
@@ -52,7 +52,7 @@ All three files use GitHub-hosted PNG URLs and preserve the intended storefront 
 - [x] Repository is older than one day and currently has at least ten commits.
 - [x] Avoid advertising the unrelated unscoped `dsh-attachments` npm package; use the standalone GitHub install spec.
 - [ ] Select a distinct npm registry name and publish the prebuilt package (recommended, not required for the catalog PR).
-- [x] Add the `dsh-plugin` topic to `WJZ-P/dsh-attachments` on GitHub.
+- [ ] Add the `dsh-plugin` topic to `darkness8099/dsh-attachments` on GitHub.
 - [x] Add and review 1-8 screenshots from `assets/markdown/`.
 - [x] Rehearse README generation, `awesome-lint`, and the storefront build against a fresh catalog checkout.
 - [ ] Open the catalog PR with the YAML file, regenerated READMEs, and optional screenshot JSON entry.
