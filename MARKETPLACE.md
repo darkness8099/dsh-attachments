@@ -31,9 +31,9 @@ The reviewed screenshot snippet is checked in at [`marketplace/screenshots.entry
 ```json
 {
   "https://github.com/WJZ-P/dsh-attachments": [
-    "https://raw.githubusercontent.com/WJZ-P/dsh-attachments/main/assets/screenshots/01-drag-drop-overlay.png",
-    "https://raw.githubusercontent.com/WJZ-P/dsh-attachments/main/assets/screenshots/02-image-conversation.png",
-    "https://raw.githubusercontent.com/WJZ-P/dsh-attachments/main/assets/screenshots/03-multiple-image-preview.png"
+    "https://raw.githubusercontent.com/WJZ-P/dsh-attachments/main/assets/markdown/01-drag-drop-overlay.png",
+    "https://raw.githubusercontent.com/WJZ-P/dsh-attachments/main/assets/markdown/02-image-conversation.png",
+    "https://raw.githubusercontent.com/WJZ-P/dsh-attachments/main/assets/markdown/03-multiple-image-preview.png"
   ]
 }
 ```
@@ -49,10 +49,10 @@ All three files use GitHub-hosted PNG URLs and preserve the intended storefront 
 - [x] npm package allowlist contains prebuilt Host and browser artifacts.
 - [x] English and Chinese plugin documentation is present.
 - [x] Catalog YAML uses the standalone repository URL, `ui` category, and factual bilingual descriptions.
-- [ ] Repository is older than one day and currently has at least ten commits.
+- [x] Repository is older than one day and currently has at least ten commits.
 - [x] Avoid advertising the unrelated unscoped `dsh-attachments` npm package; use the standalone GitHub install spec.
 - [ ] Select a distinct npm registry name and publish the prebuilt package (recommended, not required for the catalog PR).
-- [ ] Add the `dsh-plugin` topic to `WJZ-P/dsh-attachments` on GitHub after creating the remote repository.
-- [x] Add and review 1-8 screenshots from `assets/screenshots/`.
+- [x] Add the `dsh-plugin` topic to `WJZ-P/dsh-attachments` on GitHub.
+- [x] Add and review 1-8 screenshots from `assets/markdown/`.
 - [x] Rehearse README generation, `awesome-lint`, and the storefront build against a fresh catalog checkout.
 - [ ] Open the catalog PR with the YAML file, regenerated READMEs, and optional screenshot JSON entry.

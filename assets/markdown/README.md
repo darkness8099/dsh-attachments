@@ -1,6 +1,10 @@
-# Screenshot assets
+# Markdown assets
 
-Place marketplace screenshots in this directory. Keep PNG files in the repository so `dsh-market` can load them from `raw.githubusercontent.com`.
+Keep README artwork and marketplace screenshots in this directory so GitHub and `dsh-market` can load them directly from the repository.
+
+Hero artwork:
+
+- `attachment.svg` — the 250 × 250 attachment icon displayed at the top of both plugin READMEs.
 
 Current storefront order and content:
 
@@ -10,4 +14,4 @@ Current storefront order and content:
 
 Future screenshots should show distinct behavior. Keep a consistent visual scale where practical, and do not place secrets, local usernames, API keys, or private workspace paths in screenshots.
 
-After adding images, update both plugin READMEs with the selected screenshots and copy their raw GitHub URLs into the catalog's `data/screenshots.json` using the template in [`../../MARKETPLACE.md`](../../MARKETPLACE.md).
+After adding images, update both plugin READMEs with the selected paths and copy screenshot raw URLs into the catalog's `data/screenshots.json` using the template in [`../../MARKETPLACE.md`](../../MARKETPLACE.md).

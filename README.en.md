@@ -1,6 +1,8 @@
 <div align="center">
 
-# 📎 dsh-attachments
+# dsh-attachments
+
+<img src="assets/markdown/attachment.svg" alt="Attachment icon" width="250" height="250" />
 
 **Drag-and-drop file and folder attachments for DeepSeek Harness.**
 
@@ -33,19 +35,19 @@
 
 The plugin adds its window-level dashed drop boundary while preserving Harness's native image-intake surface.
 
-![Drag-and-drop attachment surface](assets/screenshots/01-drag-drop-overlay.png)
+![Drag-and-drop attachment surface](assets/markdown/01-drag-drop-overlay.png)
 
 ### Image conversation history
 
 Native image messages continue to render in persistent conversation history and remain available to multimodal models.
 
-![Image message and model response](assets/screenshots/02-image-conversation.png)
+![Image message and model response](assets/markdown/02-image-conversation.png)
 
 ### Multiple image previews
 
 Multiple native image previews share the composer attachment rail used by plugin-provided file and folder cards.
 
-![Multiple image previews in one prompt](assets/screenshots/03-multiple-image-preview.png)
+![Multiple image previews in one prompt](assets/markdown/03-multiple-image-preview.png)
 
 ## Install
 
@@ -105,7 +107,7 @@ pnpm test
 npm pack --dry-run
 ```
 
-The ready-to-copy catalog YAML and screenshot URL template are maintained in [MARKETPLACE.md](MARKETPLACE.md). Screenshot files belong in [`assets/screenshots/`](assets/screenshots/).
+The ready-to-copy catalog YAML and screenshot URL template are maintained in [MARKETPLACE.md](MARKETPLACE.md). README image assets belong in [`assets/markdown/`](assets/markdown/).
 
 ## Security and portability
 

@@ -13,6 +13,7 @@
   },
   "files": [
     "lib/",
+    "assets/markdown/",
     "cordis.patch.yml",
     "README.md",
     "README.en.md",

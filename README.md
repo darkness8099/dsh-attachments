@@ -1,6 +1,8 @@
 <div align="center">
 
-# 📎 dsh-attachments
+# dsh-attachments
+
+<img src="assets/markdown/attachment.svg" alt="附件图标" width="250" height="250" />
 
 **为 DeepSeek Harness 带来直观、持久、低侵入的文件与文件夹附件体验。**
 
@@ -37,7 +39,7 @@
 拖入文件或文件夹时，只在原界面上方增加清晰的虚线边界，Harness 原生图片接收界面仍然保留。
 
 <p align="center">
-  <img src="assets/screenshots/01-drag-drop-overlay.png" alt="拖放附件界面" width="760" />
+  <img src="assets/markdown/01-drag-drop-overlay.png" alt="拖放附件界面" width="760" />
 </p>
 
 ### 图片消息历史
@@ -45,7 +47,7 @@
 原生图片消息继续显示在持久化会话历史中，并可交给支持多模态输入的模型。
 
 <p align="center">
-  <img src="assets/screenshots/02-image-conversation.png" alt="图片消息与模型回复" width="700" />
+  <img src="assets/markdown/02-image-conversation.png" alt="图片消息与模型回复" width="700" />
 </p>
 
 ### 多图片预览
@@ -53,7 +55,7 @@
 多张原生图片与插件提供的文件、文件夹卡片共用同一条输入附件区域。
 
 <p align="center">
-  <img src="assets/screenshots/03-multiple-image-preview.png" alt="多图片输入预览" width="700" />
+  <img src="assets/markdown/03-multiple-image-preview.png" alt="多图片输入预览" width="700" />
 </p>
 
 ## 🚀 安装
@@ -129,7 +131,7 @@ npm pack --dry-run
 
 ## 🛍️ 插件市场
 
-Marketplace 数据模板、截图 URL 和提交前检查项记录在 [`MARKETPLACE.md`](MARKETPLACE.md)，截图源文件位于 [`assets/screenshots/`](assets/screenshots/)。
+Marketplace 数据模板、截图 URL 和提交前检查项记录在 [`MARKETPLACE.md`](MARKETPLACE.md)，README 图片资源位于 [`assets/markdown/`](assets/markdown/)。
 
 ## 📄 License
 
