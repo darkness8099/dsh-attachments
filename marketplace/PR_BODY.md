@@ -1,6 +1,6 @@
 ## Summary
 
-- list `WJZ-P/dsh-attachments` under UI Enhancements
+- list `darkness8099/dsh-attachments` under UI Enhancements
 - add factual English and Chinese descriptions
 - register three GitHub-hosted storefront screenshots
 
@@ -24,5 +24,5 @@ The npm package with the same unscoped name belongs to another repository, so
 the catalog should retain its generated standalone GitHub install command:
 
 ```sh
-dsh plugin --profile web add github:WJZ-P/dsh-attachments
+dsh plugin --profile web add github:darkness8099/dsh-attachments
 ```

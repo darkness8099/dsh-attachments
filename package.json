@@ -39,12 +39,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/WJZ-P/dsh-attachments.git"
+    "url": "git+https://github.com/darkness8099/dsh-attachments.git"
   },
   "bugs": {
-    "url": "https://github.com/WJZ-P/dsh-attachments/issues"
+    "url": "https://github.com/darkness8099/dsh-attachments/issues"
   },
-  "homepage": "https://github.com/WJZ-P/dsh-attachments#readme",
+  "homepage": "https://github.com/darkness8099/dsh-attachments#readme",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

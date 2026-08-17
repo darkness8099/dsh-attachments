@@ -6,7 +6,7 @@
 
 [简体中文](README.md) · **English**
 
-[![CI](https://github.com/WJZ-P/dsh-attachments/actions/workflows/ci.yml/badge.svg)](https://github.com/WJZ-P/dsh-attachments/actions/workflows/ci.yml)
+[![CI](https://github.com/darkness8099/dsh-attachments/actions/workflows/ci.yml/badge.svg)](https://github.com/darkness8099/dsh-attachments/actions/workflows/ci.yml)
 ![DSH Plugin](https://img.shields.io/badge/DeepSeek%20Harness-plugin-111827)
 ![Version](https://img.shields.io/badge/version-1.0.1-2563eb)
 ![License](https://img.shields.io/badge/license-MIT-22c55e)
@@ -53,7 +53,7 @@ Install the standalone repository directly from GitHub into a native DSH `web`
 profile:
 
 ```sh
-dsh plugin --profile web add github:WJZ-P/dsh-attachments
+dsh plugin --profile web add github:darkness8099/dsh-attachments
 ```
 
 This explicit source is intentional: the unscoped `dsh-attachments` name on npm
