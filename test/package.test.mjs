@@ -18,6 +18,7 @@ test('package declares a standard installable DSH bundle', async () => {
     inject: [
       '@deepseek-ai/dsh-client-runtime',
       '@deepseek-ai/dsh-client-ui-conversation',
+      '@deepseek-ai/dsh-client-ui-model-selection',
     ],
     immediately: true,
   })
@@ -29,6 +30,7 @@ test('package declares a standard installable DSH bundle', async () => {
   assert.ok(Object.keys(manifest.peerDependencies).every(name => (
     name === 'react' || name.startsWith('@deepseek-ai/')
   )))
+  assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-tools'], '^0.1.0-rc.6')
   assert.ok(manifest.files.includes('lib/'))
   assert.ok(manifest.files.includes('README.en.md'))
   assert.match(patch, /id:\s*dsh-attachments/)
@@ -53,8 +55,8 @@ test('installation docs use this repository instead of the unrelated npm package
   const installSpec = 'github:WJZ-P/dsh-attachments'
   for (const readme of ['README.md', 'README.en.md']) {
     const body = await readFile(join(packageRoot, readme), 'utf8')
-    assert.match(body, new RegExp(`dsh plugin --profile web add ${installSpec}`))
-    assert.doesNotMatch(body, /dsh plugin --profile web add dsh-attachments(?:\s|$)/)
+    assert.match(body, new RegExp(`dsh plugin --profile desktop add ${installSpec}`))
+    assert.doesNotMatch(body, /dsh plugin --profile desktop add dsh-attachments(?:\s|$)/)
   }
 })
 

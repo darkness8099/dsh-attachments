@@ -10,6 +10,7 @@ const clientId = 'dsh-attachments'
 await rm(outDir, { recursive: true, force: true })
 await mkdir(outDir, { recursive: true })
 await copyFile(join(pluginRoot, 'src', 'index.mjs'), join(outDir, 'index.mjs'))
+await copyFile(join(pluginRoot, 'src', 'vision-bridge.mjs'), join(outDir, 'vision-bridge.mjs'))
 
 const client = join(outDir, 'client.js')
 await build({

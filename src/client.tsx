@@ -8,6 +8,7 @@ const CLIENT_BUNDLE_ID = 'dsh-attachments'
 const AUTO_DRAFT_MARKER = '\u2063'
 const ATTACHMENT_SOURCE_FIELD = 'dshAttachments'
 const ROUTE_PREFIX = '/dsh-attachments/files'
+const VISION_BRIDGE_ROUTE = '/dsh-attachments/vision-bridges'
 const NATIVE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
 type UploadStatus = 'uploading' | 'ready' | 'error'
@@ -52,6 +53,74 @@ interface InputProps {
 interface HistoryProps {
   sessionId: string
   node: { data: FileNodeData }
+}
+
+interface ModelSelection {
+  provider: string
+  model: string
+  reasoningEffort?: string
+}
+
+interface BridgeCandidate {
+  id: string
+  name: string
+  model: string
+  bridgeName: string
+  description: string
+  group: string
+  reasoning?: {
+    efforts: Array<{ id: string; name: string; description?: string }>
+    defaultEffort?: string
+  }
+}
+
+interface BridgeCatalog {
+  provider: string | null
+  providerName: string | null
+  main: (ModelSelection & { name: string }) | null
+  required: boolean
+  active: boolean
+  sessionHasImages: boolean
+  visionModels: BridgeCandidate[]
+}
+
+interface ModelDirectoryState {
+  current: ModelSelection | null
+  groups: Array<{
+    id: string
+    name: string
+    models: Array<{
+      id: string
+      name: string
+      description?: string
+      reasoning?: BridgeCandidate['reasoning']
+    }>
+  }>
+}
+
+interface ModelDirectory {
+  store: {
+    subscribe(listener: () => void): () => void
+    getSnapshot(): ModelDirectoryState
+    update(mutator: (state: ModelDirectoryState) => void): void
+  }
+  load(): Promise<unknown>
+  select(selection: ModelSelection): Promise<void>
+}
+
+interface ModelDirectories {
+  directoryFor(sessionId: string): ModelDirectory
+}
+
+interface VisionBridgeGuideProps {
+  sessionId: string
+  input: { imageIds: readonly string[] }
+  modelDirectories: ModelDirectories
+}
+
+interface VisionBridgeControlProps {
+  sessionId: string
+  modelDirectories: ModelDirectories
 }
 
 class DraftFiles {
@@ -111,6 +180,453 @@ function useFiles(sessionId: string): readonly AttachmentDraft[] {
   const subscribe = useCallback((listener: () => void) => drafts.subscribe(sessionId, listener), [sessionId])
   const snapshot = useCallback(() => drafts.snapshot(sessionId), [sessionId])
   return useSyncExternalStore(subscribe, snapshot, snapshot)
+}
+
+function parseBridgeCatalog(value: unknown): BridgeCatalog {
+  const empty = {
+    provider: null,
+    providerName: null,
+    main: null,
+    required: false,
+    active: false,
+    sessionHasImages: false,
+    visionModels: [],
+  }
+  if (value === null || typeof value !== 'object') return empty
+  const row = value as Record<string, unknown>
+  if (row.ok !== true
+    || (row.provider !== null && typeof row.provider !== 'string')
+    || (row.providerName !== null && typeof row.providerName !== 'string')
+    || !Array.isArray(row.visionModels)) {
+    return empty
+  }
+  const mainRow = row.main
+  const main = mainRow !== null && typeof mainRow === 'object'
+    ? mainRow as Record<string, unknown>
+    : null
+  const parsedMain = main !== null && typeof main.provider === 'string'
+    && typeof main.model === 'string' && typeof main.name === 'string'
+    && (main.reasoningEffort === undefined || typeof main.reasoningEffort === 'string')
+    ? {
+        provider: main.provider,
+        model: main.model,
+        name: main.name,
+        ...main.reasoningEffort === undefined ? {} : { reasoningEffort: main.reasoningEffort },
+      }
+    : null
+  const visionModels = row.visionModels.flatMap((entry): BridgeCandidate[] => {
+    if (entry === null || typeof entry !== 'object') return []
+    const model = entry as Record<string, unknown>
+    if (typeof model.id !== 'string' || typeof model.name !== 'string'
+      || typeof model.model !== 'string' || typeof model.bridgeName !== 'string'
+      || typeof model.description !== 'string') return []
+    return [{
+      id: model.id,
+      name: model.name,
+      model: model.model,
+      bridgeName: model.bridgeName,
+      description: model.description,
+      group: typeof model.group === 'string' ? model.group : 'Configured',
+      ...(model.reasoning === undefined ? {} : { reasoning: model.reasoning as BridgeCandidate['reasoning'] }),
+    }]
+  })
+  return {
+    provider: row.provider as string | null,
+    providerName: row.providerName as string | null,
+    main: parsedMain,
+    required: row.required === true,
+    active: row.active === true,
+    sessionHasImages: row.sessionHasImages === true,
+    visionModels,
+  }
+}
+
+function availableBridgeCandidates(
+  catalog: BridgeCatalog,
+): BridgeCandidate[] {
+  return catalog.provider === null || catalog.main === null || !catalog.required
+    ? []
+    : catalog.visionModels
+}
+
+function groupBridgeCandidates(candidates: readonly BridgeCandidate[]): Array<[string, BridgeCandidate[]]> {
+  const groups = new Map<string, BridgeCandidate[]>()
+  for (const candidate of candidates) {
+    const entries = groups.get(candidate.group)
+    if (entries === undefined) groups.set(candidate.group, [candidate])
+    else entries.push(candidate)
+  }
+  return [...groups]
+}
+
+function activeBridgeCandidate(
+  catalog: BridgeCatalog,
+  current: ModelSelection | null,
+): BridgeCandidate | undefined {
+  return catalog.visionModels.find(candidate => (
+    current?.provider === catalog.provider && current.model === candidate.model
+  ))
+}
+
+function shouldShowVisionGuide(
+  hasImages: boolean,
+  changingMain: boolean,
+  active: BridgeCandidate | undefined,
+): boolean {
+  return (hasImages || changingMain) && (changingMain || active === undefined)
+}
+
+function shouldShowVisionControl(active: BridgeCandidate | undefined, candidateCount: number): boolean {
+  return active !== undefined && candidateCount > 1
+}
+
+function bridgeCatalogUrl(current: ModelSelection, sessionId: string): string {
+  const query = new URLSearchParams({ provider: current.provider, model: current.model })
+  if (current.reasoningEffort !== undefined) query.set('reasoningEffort', current.reasoningEffort)
+  query.set('sessionId', sessionId)
+  return `${VISION_BRIDGE_ROUTE}?${query.toString()}`
+}
+
+async function fetchBridgeCatalog(
+  selection: ModelSelection,
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<BridgeCatalog> {
+  const response = await fetch(bridgeCatalogUrl(selection, sessionId), {
+    headers: { accept: 'application/json' },
+    ...signal === undefined ? {} : { signal },
+  })
+  if (!response.ok) throw new Error(`vision bridge preflight failed with HTTP ${String(response.status)}`)
+  return parseBridgeCatalog(await response.json())
+}
+
+async function restoreBridgeDefault(selection: ModelSelection): Promise<void> {
+  const response = await fetch(VISION_BRIDGE_ROUTE, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({
+      model: selection.model,
+      ...selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort },
+    }),
+  })
+  if (!response.ok) throw new Error(`default model restoration failed with HTTP ${String(response.status)}`)
+}
+
+function installModelSelectionBridge(
+  directory: ModelDirectory,
+  options: {
+    preflight(selection: ModelSelection): Promise<BridgeCatalog>
+    draftHasImages(): boolean
+    offer(catalog: BridgeCatalog): void
+    clear(): void
+    bridgeSelected(selection: ModelSelection): Promise<void>
+  },
+): { dispose(): void; select(selection: ModelSelection): Promise<void> } {
+  const original = directory.select
+  let generation = 0
+  let disposed = false
+  const directSelect = (selection: ModelSelection) => original.call(directory, selection)
+  const wrapped = async (selection: ModelSelection): Promise<void> => {
+    const currentGeneration = ++generation
+    let catalog
+    try {
+      catalog = await options.preflight(selection)
+    } catch {
+      if (disposed || currentGeneration !== generation) return
+      options.clear()
+      await directSelect(selection)
+      return
+    }
+    if (disposed || currentGeneration !== generation) return
+    if (selection.provider === catalog.provider) {
+      const previous = directory.store.getSnapshot().current
+      await directSelect(selection)
+      try {
+        await options.bridgeSelected(selection)
+      } catch (error) {
+        if (previous !== null) {
+          await directSelect(previous)
+          if (previous.provider === catalog.provider) await options.bridgeSelected(previous)
+        }
+        throw error
+      }
+      return
+    }
+    const candidates = availableBridgeCandidates(catalog)
+    if ((options.draftHasImages() || catalog.sessionHasImages) && candidates.length > 0) {
+      options.offer(catalog)
+      return
+    }
+    options.clear()
+    await directSelect(selection)
+  }
+  directory.select = wrapped
+  return {
+    select: directSelect,
+    dispose() {
+      disposed = true
+      generation += 1
+      if (directory.select === wrapped) directory.select = original
+    },
+  }
+}
+
+function bridgeDirectoryModel(candidate: BridgeCandidate) {
+  return {
+    id: candidate.model,
+    name: candidate.bridgeName,
+    description: candidate.description,
+    ...candidate.reasoning === undefined ? {} : { reasoning: candidate.reasoning },
+  }
+}
+
+function sameBridgeDirectoryModel(
+  current: ModelDirectoryState['groups'][number]['models'][number],
+  expected: ReturnType<typeof bridgeDirectoryModel>,
+): boolean {
+  return current.id === expected.id
+    && current.name === expected.name
+    && current.description === expected.description
+    && current.reasoning === expected.reasoning
+}
+
+function syncActiveBridgeModel(
+  directory: ModelDirectory,
+  catalog: BridgeCatalog,
+): void {
+  if (catalog.provider === null) return
+  const snapshot = directory.store.getSnapshot()
+  const active = catalog.visionModels.find(candidate => (
+    snapshot.current?.provider === catalog.provider
+    && snapshot.current.model === candidate.model
+  ))
+  const group = snapshot.groups.find(entry => entry.id === catalog.provider)
+  if (active === undefined) {
+    if (group === undefined) return
+    directory.store.update((state) => {
+      state.groups = state.groups.filter(entry => entry.id !== catalog.provider)
+    })
+    return
+  }
+  const model = bridgeDirectoryModel(active)
+  if (group !== undefined && group.models.length === 1
+    && sameBridgeDirectoryModel(group.models[0], model)) return
+  directory.store.update((state) => {
+    const currentGroup = state.groups.find(entry => entry.id === catalog.provider)
+    if (currentGroup === undefined) {
+      state.groups.push({ id: catalog.provider as string, name: catalog.providerName ?? 'Vision Bridge', models: [model] })
+    } else {
+      currentGroup.name = catalog.providerName ?? 'Vision Bridge'
+      currentGroup.models = [model]
+    }
+  })
+}
+
+function VisionBridgeGuide({ sessionId, input, modelDirectories }: VisionBridgeGuideProps) {
+  const [directory] = useState(() => modelDirectories.directoryFor(sessionId))
+  const subscribe = useCallback((listener: () => void) => directory.store.subscribe(listener), [directory])
+  const snapshot = useCallback(() => directory.store.getSnapshot(), [directory])
+  const directoryState = useSyncExternalStore(subscribe, snapshot, snapshot)
+  const [catalog, setCatalog] = useState<BridgeCatalog | null>(null)
+  const [pendingCatalog, setPendingCatalog] = useState<BridgeCatalog | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [switching, setSwitching] = useState(false)
+  const [switchError, setSwitchError] = useState<string | null>(null)
+  const hasImages = input.imageIds.length > 0
+  const hasImagesRef = useRef(hasImages)
+  const directSelectRef = useRef<(selection: ModelSelection) => Promise<void>>(
+    selection => directory.select(selection),
+  )
+  hasImagesRef.current = hasImages
+
+  useEffect(() => {
+    const installed = installModelSelectionBridge(directory, {
+      preflight: selection => fetchBridgeCatalog(selection, sessionId),
+      draftHasImages: () => hasImagesRef.current,
+      offer: (nextCatalog) => {
+        setPendingCatalog(nextCatalog)
+        setSelectedId(null)
+        setSwitchError(null)
+      },
+      clear: () => {
+        setPendingCatalog(null)
+        setSelectedId(null)
+        setSwitchError(null)
+      },
+      bridgeSelected: restoreBridgeDefault,
+    })
+    directSelectRef.current = installed.select
+    return installed.dispose
+  }, [directory, sessionId])
+
+  useEffect(() => {
+    const current = directoryState.current
+    if (current === null) return
+    const controller = new AbortController()
+    void fetchBridgeCatalog(current, sessionId, controller.signal).then(setCatalog).catch(() => {
+      if (!controller.signal.aborted) setCatalog(parseBridgeCatalog(null))
+    })
+    return () => { controller.abort() }
+  }, [directoryState.current?.model, directoryState.current?.provider, directoryState.current?.reasoningEffort, sessionId])
+
+  useEffect(() => {
+    if (hasImages) {
+      void directory.load().catch(() => undefined)
+      return
+    }
+    setSelectedId(null)
+    setSwitchError(null)
+  }, [directory, hasImages])
+
+  useEffect(() => {
+    if (catalog === null) return
+    syncActiveBridgeModel(directory, catalog)
+  }, [catalog, directory, directoryState.current?.model, directoryState.current?.provider, directoryState.groups])
+
+  const guideCatalog = pendingCatalog ?? catalog
+  const changingMain = pendingCatalog !== null
+  if (guideCatalog === null) return null
+  const candidates = availableBridgeCandidates(guideCatalog)
+  const active = activeBridgeCandidate(guideCatalog, directoryState.current)
+  if (!shouldShowVisionGuide(hasImages, changingMain, active)) return null
+
+  const target = candidates.find(candidate => candidate.id === selectedId) ?? active ?? candidates[0]
+  if (target === undefined) return null
+  const candidateGroups = groupBridgeCandidates(candidates)
+  const targetIsActive = active?.id === target.id
+
+  const select = async (): Promise<void> => {
+    setSwitching(true)
+    setSwitchError(null)
+    const previous = directory.store.getSnapshot().current
+    try {
+      const selection = {
+        provider: guideCatalog.provider as string,
+        model: target.model,
+        ...guideCatalog.main?.reasoningEffort === undefined ? {} : { reasoningEffort: guideCatalog.main.reasoningEffort },
+      }
+      await directSelectRef.current(selection)
+      try {
+        await restoreBridgeDefault(selection)
+      } catch (error) {
+        if (previous !== null) {
+          await directSelectRef.current(previous)
+          if (previous.provider === guideCatalog.provider) await restoreBridgeDefault(previous)
+        }
+        throw error
+      }
+      setCatalog(guideCatalog)
+      setPendingCatalog(null)
+      setSelectedId(null)
+      syncActiveBridgeModel(directory, guideCatalog)
+    } catch {
+      setSwitchError(`Could not activate ${target.name} for vision. The model switch was not completed.`)
+    } finally {
+      setSwitching(false)
+    }
+  }
+
+  return (
+    <div className="dsh-attachments-vision-guide" role="status">
+      <span>
+        {active !== undefined
+          ? <><strong>{guideCatalog.main?.name}</strong> remains the main reasoning model; <strong>{active.name}</strong> is the current vision model. Choose another route without rescanning existing evidence.</>
+          : <><strong>{guideCatalog.main?.name}</strong> can’t read {changingMain ? 'images already in this conversation' : 'the attached images'}.{' '}
+            {candidates.length === 1 && <>Use <strong>{target.name}</strong> for vision while keeping <strong>{guideCatalog.main?.name}</strong> as the main reasoning model.</>}
+            {candidates.length > 1 && <>Choose a vision model; <strong>{guideCatalog.main?.name}</strong> will remain in charge.</>}
+          </>}
+      </span>
+      {candidates.length > 1 && (
+        <select
+          aria-label="Vision bridge"
+          className="dsh-attachments-vision-select"
+          value={target.id}
+          onChange={event => { setSelectedId(event.currentTarget.value) }}
+          disabled={switching}
+        >
+          {candidateGroups.map(([group, entries]) => (
+            <optgroup key={group} label={group}>
+              {entries.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      )}
+      <button
+        type="button"
+        className="dsh-attachments-vision-switch"
+        disabled={switching || targetIsActive}
+        onClick={() => { void select() }}
+      >
+        {switching ? 'Activating…' : targetIsActive ? 'Vision model active' : `Use ${target.name} for vision`}
+      </button>
+      {switchError !== null && <span className="dsh-attachments-vision-error">{switchError}</span>}
+    </div>
+  )
+}
+
+function VisionBridgeControl({ sessionId, modelDirectories }: VisionBridgeControlProps) {
+  const [directory] = useState(() => modelDirectories.directoryFor(sessionId))
+  const subscribe = useCallback((listener: () => void) => directory.store.subscribe(listener), [directory])
+  const snapshot = useCallback(() => directory.store.getSnapshot(), [directory])
+  const directoryState = useSyncExternalStore(subscribe, snapshot, snapshot)
+  const [catalog, setCatalog] = useState<BridgeCatalog | null>(null)
+  const [switching, setSwitching] = useState(false)
+  const [switchError, setSwitchError] = useState(false)
+
+  useEffect(() => {
+    const current = directoryState.current
+    if (current === null) return
+    const controller = new AbortController()
+    void fetchBridgeCatalog(current, sessionId, controller.signal).then(setCatalog).catch(() => {
+      if (!controller.signal.aborted) setCatalog(parseBridgeCatalog(null))
+    })
+    return () => { controller.abort() }
+  }, [directoryState.current?.model, directoryState.current?.provider, directoryState.current?.reasoningEffort, sessionId])
+
+  if (catalog === null) return null
+  const candidates = availableBridgeCandidates(catalog)
+  const active = activeBridgeCandidate(catalog, directoryState.current)
+  if (!shouldShowVisionControl(active, candidates.length) || active === undefined) return null
+  const groups = groupBridgeCandidates(candidates)
+
+  const switchVision = async (candidateId: string): Promise<void> => {
+    const target = candidates.find(candidate => candidate.id === candidateId)
+    if (target === undefined || target.id === active.id) return
+    setSwitching(true)
+    setSwitchError(false)
+    try {
+      await directory.select({
+        provider: catalog.provider as string,
+        model: target.model,
+        ...catalog.main?.reasoningEffort === undefined ? {} : { reasoningEffort: catalog.main.reasoningEffort },
+      })
+    } catch {
+      setSwitchError(true)
+    } finally {
+      setSwitching(false)
+    }
+  }
+
+  return (
+    <div className="dsh-attachments-vision-control" role="group" aria-label="Vision bridge">
+      <span className="dsh-attachments-vision-control-label">Vision</span>
+      <select
+        aria-label="Vision model"
+        className="dsh-attachments-vision-control-select"
+        value={active.id}
+        disabled={switching}
+        title={`Vision model: ${active.name}`}
+        onChange={event => { void switchVision(event.currentTarget.value) }}
+      >
+        {groups.map(([group, entries]) => (
+          <optgroup key={group} label={group}>
+            {entries.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+          </optgroup>
+        ))}
+      </select>
+      {switchError && <span className="dsh-attachments-vision-control-error" title="The vision model could not be changed.">!</span>}
+    </div>
+  )
 }
 
 function copy() {
@@ -724,6 +1240,7 @@ const STYLES = String.raw`
 .dsh-attachments-file-action{position:absolute;top:4px;right:4px;z-index:1;display:grid;place-items:center;width:18px;height:18px;padding:0;border:0;border-radius:50%;background:var(--dsw-alias-button-contrast-fill,#fff);color:var(--dsw-alias-label-primary-inverted,#111);font-size:14px;font-weight:600;line-height:1;text-decoration:none;cursor:pointer;opacity:.96}.dsh-attachments-file-action:hover{transform:scale(1.06);opacity:1}
 .dsh-attachments-drop{position:fixed;inset:10px;z-index:2147483647;box-sizing:border-box;border:2px dashed var(--dsw-alias-label-primary,#111);border-radius:18px;background:transparent;pointer-events:none;animation:dsh-attachments-drop-in .14s ease-out}@keyframes dsh-attachments-drop-in{from{opacity:0}to{opacity:1}}
 .dsh-attachments-history-row{display:flex;justify-content:flex-end;padding:0 0 8px}.dsh-attachments-history-stack{display:flex;max-width:min(72%,620px);flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.dsh-attachments-vision-guide{box-sizing:border-box;display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#d9dce1);border-radius:10px;background:var(--dsw-alias-bg-layer-2,#f3f4f6);color:var(--dsw-alias-label-primary,#111);font-size:12px;line-height:18px}.dsh-attachments-vision-guide>span:first-child{min-width:0;flex:1}.dsh-attachments-vision-select{max-width:260px;height:30px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#d9dce1);border-radius:8px;background:var(--dsw-specific-input-major,#fff);color:inherit;padding:0 8px}.dsh-attachments-vision-switch{height:30px;flex:0 0 auto;padding:0 12px;border:0;border-radius:8px;background:var(--dsw-alias-button-primary-fill,#111);color:var(--dsw-alias-label-primary-inverted,#fff);font-weight:600;cursor:pointer}.dsh-attachments-vision-switch:disabled{cursor:default;opacity:.55}.dsh-attachments-vision-error{flex-basis:100%;color:var(--dsw-alias-state-error-primary,#dc2626)}.dsh-attachments-vision-control{box-sizing:border-box;display:inline-flex;align-items:center;min-width:0;height:28px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin,#d9dce1);border-radius:14px;background:var(--dsw-alias-bg-layer-2,#f3f4f6);color:var(--dsw-alias-label-secondary,#555);font-size:12px;line-height:18px;overflow:hidden}.dsh-attachments-vision-control-label{flex:0 0 auto;padding-left:9px;font-weight:600}.dsh-attachments-vision-control-select{appearance:none;color-scheme:inherit;min-width:0;max-width:150px;height:26px;border:0;background:var(--dsw-alias-bg-layer-2,#f3f4f6);color:var(--dsw-alias-label-primary,#111);font:inherit;cursor:pointer;padding:0 18px 0 5px}.dsh-attachments-vision-control-select:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4f46e5);outline-offset:-2px}.dsh-attachments-vision-control-select:disabled{cursor:default;opacity:.55}.dsh-attachments-vision-control-select option,.dsh-attachments-vision-control-select optgroup{background:var(--dsw-alias-bg-layer-2,#f3f4f6);color:var(--dsw-alias-label-primary,#111)}.dsh-attachments-vision-control-error{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-right:4px;border-radius:50%;background:var(--dsw-alias-state-error-primary,#dc2626);color:#fff;font-weight:700}@media(max-width:700px){.dsh-attachments-vision-control-label{font-size:0}.dsh-attachments-vision-control-label:after{content:'V';font-size:11px}.dsh-attachments-vision-control-select{max-width:92px}}
 @media(prefers-reduced-motion:reduce){.dsh-attachments-drop{animation:none}.dsh-attachments-file-action:hover{transform:none}}@media(max-width:700px){.dsh-attachments-history-stack{max-width:90%}.dsh-attachments-file-card{width:200px;flex-basis:200px}}
 `
 
@@ -737,7 +1254,7 @@ function installStyles(): () => void {
   return () => { style.remove() }
 }
 
-export const inject = ['slots', 'conversationEvents']
+export const inject = ['slots', 'conversationEvents', 'modelDirectories']
 
 export function apply(ctx: any): void {
   ctx.effect(installStyles, 'dsh-attachments: styles')
@@ -752,6 +1269,20 @@ export function apply(ctx: any): void {
     id: 'dsh-attachments-files',
     order: -10,
   }, AttachmentDock))
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: 'dsh-attachments-vision-guide',
+    order: -20,
+  }, (props: Omit<VisionBridgeGuideProps, 'modelDirectories'>) => (
+    <VisionBridgeGuide {...props} modelDirectories={ctx.modelDirectories} />
+  )))
+  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+    name: 'conversation.input.right',
+    id: 'dsh-attachments-vision-control',
+    order: 90,
+  }, (props: Omit<VisionBridgeControlProps, 'modelDirectories'>) => (
+    <VisionBridgeControl {...props} modelDirectories={ctx.modelDirectories} />
+  )))
 }
 
 /** Pure and registry-level seams used by the plugin bundle tests. */
@@ -760,6 +1291,14 @@ export const internals = {
   directoryMembers,
   filesOfEvent,
   collectDrop,
+  availableBridgeCandidates,
+  activeBridgeCandidate,
+  groupBridgeCandidates,
+  installModelSelectionBridge,
+  parseBridgeCatalog,
+  shouldShowVisionGuide,
+  shouldShowVisionControl,
+  syncActiveBridgeModel,
   nativeImage,
   partitionDroppedFiles,
   pluginOwnsDrop,
