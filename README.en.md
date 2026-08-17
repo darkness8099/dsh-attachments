@@ -51,16 +51,23 @@ Multiple native image previews share the composer attachment rail used by plugin
 
 ## Install
 
-Install the standalone repository directly from GitHub into a native DSH `web`
-profile:
+This repository is a personal learning and experimental fork of
+[WJZ-P/dsh-attachments](https://github.com/WJZ-P/dsh-attachments). For the
+original attachment plugin, install and support the upstream project:
+
+```sh
+dsh plugin --profile web add github:WJZ-P/dsh-attachments
+```
+
+To try the vision bridge and other experimental changes maintained in this
+fork, use:
 
 ```sh
 dsh plugin --profile web add github:darkness8099/dsh-attachments
 ```
 
-This explicit source is intentional: the unscoped `dsh-attachments` name on npm
-belongs to a different project. The marketplace uses this standalone GitHub
-repository until the plugin has a distinct registry package.
+Both commands use explicit GitHub sources because the unscoped
+`dsh-attachments` name on npm belongs to a different project.
 
 Build and install a local checkout:
 

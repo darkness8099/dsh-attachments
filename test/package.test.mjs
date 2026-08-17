@@ -52,11 +52,14 @@ test('marketplace fixture follows the standalone repository catalog schema', asy
   assert.match(catalog, /^  zh: .+。$/m)
 })
 
-test('installation docs use this repository instead of the unrelated npm package', async () => {
-  const installSpec = 'github:darkness8099/dsh-attachments'
+test('installation docs credit upstream before offering the experimental fork', async () => {
+  const upstreamCommand = 'dsh plugin --profile web add github:WJZ-P/dsh-attachments'
+  const forkCommand = 'dsh plugin --profile web add github:darkness8099/dsh-attachments'
   for (const readme of ['README.md', 'README.en.md']) {
     const body = await readFile(join(packageRoot, readme), 'utf8')
-    assert.match(body, new RegExp(`dsh plugin --profile web add ${installSpec}`))
+    assert.ok(body.includes(upstreamCommand))
+    assert.ok(body.includes(forkCommand))
+    assert.ok(body.indexOf(upstreamCommand) < body.indexOf(forkCommand))
     assert.doesNotMatch(body, /dsh plugin --profile web add dsh-attachments(?:\s|$)/)
   }
 })

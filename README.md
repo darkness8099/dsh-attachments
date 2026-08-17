@@ -60,14 +60,20 @@
 
 ## 🚀 安装
 
-当前版本可直接从独立 GitHub 仓库安装到原生 DSH 的 `web` profile：
+本仓库是基于 [WJZ-P/dsh-attachments](https://github.com/WJZ-P/dsh-attachments) 的个人学习与实验性分支。若只需要原项目提供的附件功能，请优先安装并支持原作者版本：
+
+```bash
+dsh plugin --profile web add github:WJZ-P/dsh-attachments
+```
+
+如果希望体验本分支新增的视觉桥接及其他实验性改动，可改用：
 
 ```bash
 dsh plugin --profile web add github:darkness8099/dsh-attachments
 ```
 
 > [!IMPORTANT]
-> npm 上未带 scope 的 `dsh-attachments` 已属于另一个项目，因此当前安装命令显式指定本 GitHub 仓库。
+> npm 上未带 scope 的 `dsh-attachments` 已属于另一个项目，因此以上命令均显式指定 GitHub 仓库。
 
 检查组合后的配置并启动 DSH：
 
